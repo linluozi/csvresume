@@ -1,0 +1,81 @@
+{
+  "impl": "restart-from-byte-0",
+  "env": {
+    "cpu": "AMD EPYC 7K62 48-Core Processor",
+    "cpu_count": 4,
+    "mem_total_kb": 3812564,
+    "python": "3.12.3",
+    "python_impl": "CPython",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.39",
+    "seed": 20261116,
+    "cut_fraction": 0.9,
+    "command": "benchmark/bench.py --real-dir /tmp/cand-deepdiff/venv/lib/python3.12/site-packages/numpy/_core/tests/data"
+  },
+  "corpora": {
+    "small": {
+      "path": "/tmp/csvresume-bench/small.csv",
+      "bytes": 334982,
+      "rows": 5000,
+      "sha256": "0e7aae9fe290bf57fd5daac529c54ec5aa9c79f207a5ec91adf214e432c39144"
+    },
+    "medium": {
+      "path": "/tmp/csvresume-bench/medium.csv",
+      "bytes": 1385275,
+      "rows": 20000,
+      "sha256": "859013c513d91cb9a5c58f9fc3dd8d5f2ca11f0fee0e88411cd50d0effdae9f7"
+    },
+    "large": {
+      "path": "/tmp/csvresume-bench/large.csv",
+      "bytes": 4229727,
+      "rows": 60000,
+      "sha256": "2d9af289a65295a1051b372be7c37812786657d4d9f0059f803873fc98ec0390"
+    }
+  },
+  "measurements": {
+    "small": {
+      "samples_ns": [
+        45146795,
+        45459153,
+        47493903,
+        47519701,
+        48261426
+      ],
+      "median_ns": 47493903,
+      "p25_ns": 45459153,
+      "p75_ns": 47519701,
+      "mean_ns": 46776195,
+      "rsd_pct": 2.959,
+      "n": 5
+    },
+    "medium": {
+      "samples_ns": [
+        185279301,
+        186637848,
+        191087921,
+        193944508,
+        201837730
+      ],
+      "median_ns": 191087921,
+      "p25_ns": 186637848,
+      "p75_ns": 193944508,
+      "mean_ns": 191757461,
+      "rsd_pct": 3.45,
+      "n": 5
+    },
+    "large": {
+      "samples_ns": [
+        616126384,
+        618754582,
+        625122508,
+        627174871,
+        634660791
+      ],
+      "median_ns": 625122508,
+      "p25_ns": 618754582,
+      "p75_ns": 627174871,
+      "mean_ns": 624367827,
+      "rsd_pct": 1.171,
+      "n": 5
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "corpus": "tests/test_diff.py::build_corpus",
+  "seed": 20261116,
+  "unique_samples": 1500,
+  "unique_input_byte_strings": 1440,
+  "checked_samples": 1500,
+  "skipped_stdlib_errors": 0,
+  "mismatches": 0,
+  "coverage_failures": 0,
+  "resume_checks": 1495,
+  "resume_mismatches": 0,
+  "corpus_sha256": "8ceec6e6aa6847793646ac341703efaa7675fea3ddbec3d8c00c1d5353f677bf",
+  "dialects": [
+    [
+      ",",
+      "\""
+    ],
+    [
+      ";",
+      "\""
+    ],
+    [
+      "\t",
+      "\""
+    ],
+    [
+      "|",
+      "'"
+    ],
+    [
+      ",",
+      "'"
+    ]
+  ],
+  "generated_at": "2026-11-16T08:06:19Z"
+}
