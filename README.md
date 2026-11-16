@@ -69,7 +69,8 @@ Median of the three speedups: **9.90x**. Baseline p25/p75: 44.92/45.11,
 56.85/61.39 ms. Relative standard deviation across timed reps was 0.37–7.21%
 (the largest, 7.21%, is the large optimized run: 56.9–61.4 ms interquartile);
 no scale exceeded 10%. The speedup is a property of skipping 90% of the input,
-so it tracks the checkpoint position, not a constant.
+so it tracks the checkpoint position, not a constant. A fresh clean-clone run
+produced 9.89x on the same three scales (0.1% below the committed run).
 
 ### Differential: identical fields to `csv.reader`
 
