@@ -238,36 +238,63 @@ def main(argv=None) -> int:
 
     # Split correctness: a naive line-based split cuts inside quoted newlines.
     large_path = corpora["large"]["path"]
-    full_fields = [r.fields for r in iter_records(large_path)]
-    full_starts = [r.start for r in iter_records(large_path)]
+    import bisect
+
+    full = list(iter_records(large_path))
+    full_starts = [r.start for r in full]
+    full_ends = [r.end for r in full]
+    full_multiline = [r.spans_lines for r in full]
+
+    def cut_inside_quoted_field(offset: int) -> bool:
+        """A cut is inside a quoted field iff it is strictly inside a record
+        that spans lines (record is the only place a raw newline can hide)."""
+        idx = bisect.bisect_right(full_starts, offset) - 1
+        return (0 <= idx < len(full) and full_starts[idx] < offset < full_ends[idx]
+                and full_multiline[idx])
     for parts in (2, 4, 8, 16):
         aligned = split_ranges(large_path, parts)
         naive = naive_line_split_ranges(large_path, parts)
 
         def misparse(ranges):
             lost = 0
-            inside_quoted = 0
+            parity = 0
+            ends_inside = 0
+            starts_inside = 0
+            boundaries_inside = 0
+            data_all = open(large_path, "rb").read()
             for rng in ranges:
                 expected = sum(1 for s in full_starts if rng.start <= s < rng.end)
-                data = open(large_path, "rb").read()[rng.start:rng.end]
+                data = data_all[rng.start:rng.end]
                 got = len(scan_bytes(data))
                 lost += abs(got - expected)
-                # A cut inside a quoted field leaves an odd number of quotes.
                 if data.count(b'"') % 2 == 1:
-                    inside_quoted += 1
-            return lost, inside_quoted
+                    parity += 1
+                if rng.end < len(data_all) and cut_inside_quoted_field(rng.end):
+                    ends_inside += 1
+                    boundaries_inside += 1
+                if rng.start > 0 and cut_inside_quoted_field(rng.start):
+                    starts_inside += 1
+                    boundaries_inside += 1
+            return lost, parity, ends_inside, starts_inside, boundaries_inside
 
-        aligned_lost, aligned_bad = misparse(aligned)
-        naive_lost, naive_bad = misparse(naive)
+        a_lost, a_parity, a_end, a_start, a_bounds = misparse(aligned)
+        n_lost, n_parity, n_end, n_start, n_bounds = misparse(naive)
         result["split"][str(parts)] = {
             "aligned_chunks": len(aligned),
-            "aligned_records_lost_or_fabricated": aligned_lost,
-            "aligned_chunks_with_unbalanced_quotes": aligned_bad,
+            "aligned_records_lost_or_fabricated": a_lost,
+            "aligned_chunks_with_unbalanced_quotes": a_parity,
+            "aligned_chunks_ending_inside_quoted_field": a_end,
+            "aligned_chunks_starting_inside_quoted_field": a_start,
             "naive_chunks": len(naive),
-            "naive_records_lost_or_fabricated": naive_lost,
-            "naive_chunks_with_unbalanced_quotes": naive_bad,
+            "naive_records_lost_or_fabricated": n_lost,
+            "naive_chunks_with_unbalanced_quotes": n_parity,
+            "naive_chunks_ending_inside_quoted_field": n_end,
+            "naive_chunks_starting_inside_quoted_field": n_start,
+            "naive_boundaries_inside_quoted_field": n_bounds,
         }
-        print(f"split parts={parts}: aligned lost={aligned_lost}, naive lost={naive_lost}")
+        print(f"split parts={parts}: aligned lost={a_lost}, naive lost={n_lost}, "
+              f"naive boundaries inside a quoted field={n_bounds} "
+              f"({n_end} end / {n_start} start)")
 
     # Peak RSS: full re-parse vs resume, measured in child processes.
     for mode in ("full", "resume"):

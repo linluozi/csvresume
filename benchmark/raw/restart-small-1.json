@@ -1,7 +1,7 @@
 {
   "scale": "small",
   "impl": "restart",
-  "sample_ns": 47493903,
+  "sample_ns": 45105320,
   "offset": 300977,
   "records": 501
 }

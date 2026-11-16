@@ -19,7 +19,8 @@ input with no gaps and no overlap (`b"".join(r.raw for r in records) == data`).
 Checkpoint `rec.end`, persist it, and reopen later with
 `iter_records(path, offset=saved)` — earlier bytes are never read again.
 `split_ranges(path, n)` returns up to `n` byte ranges (fewer when the file has
-fewer records) that each start on a record boundary, so each chunk parses standalone into the same rows as the full file.
+fewer records) that each start on a record boundary, so each chunk parses
+standalone into the same rows as the full file.
 
 Upstream: none
 
@@ -56,19 +57,19 @@ Baseline re-parses the file from byte 0 (what you must do without offsets);
 optimized seeks to the saved offset. Same parser, same process, 3 warmups then
 5 timed reps, `time.perf_counter_ns()`.
 
-| scale  | rows   | bytes    | baseline median | optimized median | speedup |
-|--------|--------|----------|-----------------|------------------|---------|
-| small  | 5 001  | 334 982  | 47.49 ms        | 4.59 ms          | **10.35x** |
-| medium | 20 001 | 1 385 275| 191.09 ms       | 19.11 ms         | **10.00x** |
-| large  | 60 001 | 4 229 727| 625.12 ms       | 61.80 ms         | **10.12x** |
+| scale  | records | bytes     | baseline median | optimized median | speedup |
+|--------|---------|-----------|-----------------|------------------|---------|
+| small  | 5 001   | 334 982   | 45.00 ms        | 4.55 ms          | **9.90x** |
+| medium | 20 001  | 1 385 275 | 183.75 ms       | 18.90 ms         | **9.72x** |
+| large  | 60 001  | 4 229 727 | 579.63 ms       | 57.97 ms         | **10.00x** |
 
-Median of the three speedups: **10.12x**. Baseline p25/p75: 45.46/47.52,
-186.64/193.94, 618.75/627.17 ms; optimized p25/p75: 4.57/4.60, 19.04/19.60,
-58.48/65.47 ms. Relative standard deviation was 0.83–3.45% for the small and
-medium runs and **13.8% for the large optimized run** (p25–p75 58.5–65.5 ms);
-that spread is scheduler/CPU-frequency noise on a shared 4-vCPU box, not an
-algorithmic effect. The speedup is a property of skipping 90% of the input, so
-it tracks the checkpoint position, not a constant.
+"records" includes the header record; data rows are 5 000 / 20 000 / 60 000.
+Median of the three speedups: **9.90x**. Baseline p25/p75: 44.92/45.11,
+183.51/188.29, 574.09/584.18 ms; optimized p25/p75: 4.49/4.65, 18.74/18.95,
+56.85/61.39 ms. Relative standard deviation across timed reps was 0.37–7.21%
+(the largest, 7.21%, is the large optimized run: 56.9–61.4 ms interquartile);
+no scale exceeded 10%. The speedup is a property of skipping 90% of the input,
+so it tracks the checkpoint position, not a constant.
 
 ### Differential: identical fields to `csv.reader`
 
@@ -87,12 +88,16 @@ it tracks the checkpoint position, not a constant.
 | resume mismatches | **0** |
 | corpus sha256 | `8ceec6e6aa6847793646ac341703efaa7675fea3ddbec3d8c00c1d5353f677bf` |
 
-Corpus: five dialects (`,` `;` tab `|` with `"` and `'` quote chars), 0–4
-records of 0–5 fields, fields with embedded `\n`, `\r\n`, `\r`, delimiters,
-doubled quotes, NUL, Chinese/emoji/latin-1 text, quotes after a closed field,
-unclosed quotes, and 45% byte-level mutations of valid documents. The test suite
-re-runs a 200-sample slice at chunk sizes 1, 2, 3, 7, 64 and 1 MiB to prove the
-streaming buffer does not change results.
+Corpus: five dialects (`,` `;` tab `|` with `"` and `'` quote chars), 0–3
+records of 0–4 fields per document before mutation, fields with embedded `\n`,
+`\r\n`, `\r`, delimiters, doubled quotes, NUL, Chinese/emoji/latin-1 text, quotes
+after a closed field, and unclosed quotes; 45% of samples are byte-level
+mutations of valid documents. (Mutations can add records or fields: the largest
+sample actually observed in this corpus has 4 records and 6 fields.) 507 of the
+1 500 samples contain a newline inside a quoted field, 1 269 contain a quote
+character, and all five `(delimiter, quotechar)` pairs are realised. The test
+suite re-runs a 200-sample slice at chunk sizes 1, 2, 3, 7, 64 and 1 MiB to prove
+the streaming buffer does not change results.
 
 ### Real corpus
 
@@ -102,10 +107,10 @@ to `bench.py` to run the same check on any directory of real CSVs.
 
 | reader | throughput |
 |--------|-----------|
-| `csvresume` | 5.04 MB/s |
-| stdlib `csv.reader` | 85.01 MB/s |
+| `csvresume` | 5.34 MB/s |
+| stdlib `csv.reader` | 86.83 MB/s |
 
-**`csvresume` is 16.9x slower than the C implementation.** That is the honest
+**`csvresume` is 16.3x slower than the C implementation.** That is the honest
 trade: you pay pure-Python parsing to get byte addresses and resumability. If you
 only need fields once and never resume, use `csv`. Use this when the offset
 matters — crash-safe ingestion, chunked workers, or locating a bad row by byte
@@ -113,21 +118,25 @@ range in a multi-GB file.
 
 ### Splitting: line-based vs record-aligned
 
-Generated corpus: 60 000 rows, 30% with a quoted embedded newline (4 229 727
-bytes). A chunk is "lost/fabricated" when its standalone record count differs
-from the number of records that actually start inside that byte range.
+Generated corpus: 60 000 data rows, 30% with a quoted embedded newline
+(4 229 727 bytes). "Lost/fabricated" means a chunk's standalone record count
+differs from the number of records that actually start inside that byte range.
+"Ends inside a quoted field" is computed from the exact quote state of the full
+file (a cut is inside a quoted field iff it lies strictly inside a record that
+spans lines), not from quote-count parity.
 
-| parts | naive line split: lost/fabricated | naive chunks with unbalanced quotes | record-aligned: lost |
-|-------|-----------------------------------|--------------------------------------|----------------------|
-| 2  | 0 | 0  | 0 |
-| 4  | 1 | 2  | 0 |
-| 8  | 2 | 4  | 0 |
-| 16 | 5 | 10 | 0 |
+| parts | naive: lost/fabricated | naive chunks ending inside a quoted field | record-aligned: lost |
+|-------|------------------------|--------------------------------------------|----------------------|
+| 2  | 0 | 0 | 0 |
+| 4  | 1 | 1 | 0 |
+| 8  | 2 | 2 | 0 |
+| 16 | 5 | 5 | 0 |
 
-At 16 chunks, 10 of 16 line-cut chunks end inside a quoted field. This is the
-failure mode `split -l` has on exports with multi-line address/notes columns;
-it is data-dependent, which is why the table reports the measured counts instead
-of a rate.
+At 16 chunks, 5 cut chunks end inside a quoted field and 5 more begin inside one
+(10 boundaries total), which is why 5 records are lost or fabricated. This is the
+failure mode `split -l` has on exports with multi-line address/notes columns; it
+is data-dependent, which is why the table reports measured counts instead of a
+rate.
 
 ## Gates
 
@@ -135,9 +144,9 @@ of a rate.
 |------|--------|-----------|
 | G1 upstream tests | **N/A** — original library, there is no upstream test suite to keep green | — |
 | G2 differential ≥1000 unique, 0 mismatch | **PASS** — 1 500 unique, 0 mismatch | `python evidence/verify.py` |
-| G3 median speedup ≥1.15x | **PASS** — 10.12x | `python benchmark/bench.py` |
-| G4 largest scale ≥0.95x | **PASS** — 10.12x | `python benchmark/bench.py` |
-| G5 peak RSS ≤1.10x | **PASS** — 80 392 KB both paths, ratio 1.000 | `python benchmark/bench.py` |
+| G3 median speedup ≥1.15x | **PASS** — 9.90x | `python benchmark/bench.py` |
+| G4 largest scale ≥0.95x | **PASS** — 10.00x | `python benchmark/bench.py` |
+| G5 peak RSS ≤1.10x | **PASS** — 98 864 KB both paths, ratio 1.000 | `python benchmark/bench.py` |
 
 G3/G4 here measure the resume path (skip the already-processed prefix), not a
 claim that the parser is faster than `csv` — it is not (see the table above).
@@ -187,8 +196,9 @@ unit** and proves it byte-for-byte: every record carries `[start, end)` and
 `raw`, so a full parse is a tiling certificate (`b"".join(raw) == input`), not
 just a list of fields. That turns "resume where I stopped" and "split without
 corrupting quoted newlines" into the same one-pass primitive, and the evidence
-quantifies the failure it replaces (line-based splitting leaves 10 of 16 chunks
-ending inside a quoted field at 16 parts, with 5 records lost or fabricated).
+quantifies the failure it replaces: at 16 parts, 5 of 16 line-cut chunks end
+inside a quoted field (5 more begin inside one), losing or fabricating 5 records
+while the record-aligned split loses none.
 
 Compared with the ledger: `tzgap` addresses wall-clock instants, not file
 offsets; `feedparser-opt-lab` memoised URI resolution but never exposed record
